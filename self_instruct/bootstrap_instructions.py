@@ -69,6 +69,37 @@ def post_process_gpt3_response(response):
         instructions.append(inst)
     return instructions
 
+def post_process_alpaca_response(response):
+    if response is None:
+        return []
+    raw_instructions = re.split(r"\n\d+\s?\. ", response)
+    instructions = []
+    for inst in raw_instructions:
+        inst = re.sub(r"\s+", " ", inst).strip()
+        inst = inst.strip().capitalize()
+        if inst == "":
+            continue
+        # filter out too short or too long instructions
+        if len(inst.split()) <= 3 or len(inst.split()) > 150:
+            continue
+        # filter based on keywords that are not suitable for language models.
+        if any(find_word_in_string(word, inst) for word in ["image", "images", "graph", "graphs", "picture", "pictures", "file", "files", "map", "maps", "draw", "plot", "go to"]):
+            continue
+        # We found that the model tends to add "write a program" to some existing instructions, which lead to a lot of such instructions.
+        # And it's a bit comfusing whether the model need to write a program or directly output the result.
+        # Here we filter them out.
+        # Note this is not a comprehensive filtering for all programming instructions.
+        if inst.startswith("Write a program"):
+            continue
+        # filter those starting with punctuation
+        if inst[0] in string.punctuation:
+            continue
+        # filter those starting with non-english character
+        if not inst[0].isascii():
+            continue
+        instructions.append(inst)
+    return instructions
+
 
 def parse_args():
     parser = argparse.ArgumentParser()
@@ -143,6 +174,7 @@ if __name__ == "__main__":
     if os.path.exists(os.path.join(args.batch_dir, "machine_generated_instructions.jsonl")):
         with open(os.path.join(args.batch_dir, "machine_generated_instructions.jsonl"), "r") as fin:
             for line in fin:
+                print("================================================")
                 instruction_info = json.loads(line)
                 machine_instructions.append(instruction_info["instruction"])
                 request_idx = instruction_info["request_idx"] + 1
@@ -170,6 +202,9 @@ if __name__ == "__main__":
                 random.shuffle(prompt_instructions)
                 prompt = encode_prompt(prompt_instructions, classification=args.use_clf_seed_tasks_only)
                 batch_inputs.append(prompt)
+            print("==================================================")
+            print(len(batch_inputs))
+            print("==================================================")
             results = make_alpaca_requests(
                 prompts=batch_inputs,
                 max_tokens=1024,
@@ -177,7 +212,7 @@ if __name__ == "__main__":
             instructions = []
             all_metadata = []
             for result in results:
-                new_instructions = post_process_gpt3_response(result["response"])
+                new_instructions = post_process_alpaca_response(result["response"])
                 instructions += new_instructions
                 all_metadata += [result] * len(new_instructions)
 
