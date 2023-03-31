@@ -204,6 +204,7 @@ if __name__ == "__main__":
                 batch_inputs.append(prompt)
             print("==================================================")
             print(len(batch_inputs))
+            print(batch_inputs)
             print("==================================================")
             results = make_alpaca_requests(
                 prompts=batch_inputs,
